@@ -6,7 +6,7 @@
 #define WIFI_PASS "geeksunified"
 
 #define led LED_BUILTIN
-#define bell D0
+#define bell D8
 
 // * Web server
 #define WEB_SERVER_PORT 80
@@ -15,7 +15,7 @@
 #define door D2 // relay pin
 #define DOOR_OPEN LOW
 #define DOOR_CLOSE HIGH
-#define DOOR_OPEN_TIMEOUT DELAY_2
+#define DOOR_OPEN_TIMEOUT DELAY_4
 
 // * RFID
 #define SS_PIN D4

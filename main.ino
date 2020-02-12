@@ -1,8 +1,11 @@
+#include <ArduinoOTA.h>
 #include <EEPROM.h>
 #include <ESP8266WiFi.h>
+#include <ESP8266mDNS.h>
 #include <LiquidCrystal.h>
 #include <MFRC522.h>
 #include <SPI.h>
+#include <WiFiUdp.h>
 #include <pins_arduino.h>
 
 #define VERSION "v0.1"
@@ -21,10 +24,10 @@ void setup() {
   // Arduino pin config
   pinMode(door, OUTPUT);
   pinMode(led, OUTPUT);
-  pinMode(bell, OUTPUT);
+  // pinMode(bell, OUTPUT);
 
-  digitalWrite(bell, HIGH);
-  digitalWrite(led, HIGH);
+  digitalWrite(led, LOW);
+  digitalWrite(bell, LOW);
 
   EEPROM.begin(512);
   Serial.begin(SERIAL_PORT);
@@ -38,10 +41,10 @@ void setup() {
   closeTheDoor();
 
   lcd.print("Starting...");
+  Serial.println(led);
+  Serial.println(bell);
   lcd.setCursor(0, 1);
   lcd.print(VERSION);
-
-  delay(DELAY_500);
 
   lcd.clear();
   lcd.print("Connecting WiFi");
@@ -51,11 +54,9 @@ void setup() {
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
 
-  delay(DELAY_500);
-
   Serial.print("Connecting WiFi");
   while (WiFi.status() != WL_CONNECTED) {
-    delay(DELAY_1);
+    delay(DELAY_500);
     Serial.print(".");
   }
 
@@ -68,7 +69,29 @@ void setup() {
 
   Serial.print("Connected, IP address: ");
   Serial.println(WiFi.localIP());
-  delay(DELAY_1);
+
+  ArduinoOTA.onStart([]() { Serial.println("Start"); });
+  ArduinoOTA.onEnd([]() { Serial.println("\nEnd"); });
+  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    Serial.print("Progress");
+    Serial.print(progress / (total / 100));
+  });
+  ArduinoOTA.onError([](ota_error_t error) {
+    Serial.print("Error: ");
+    Serial.println(error);
+
+    if (error == OTA_AUTH_ERROR)
+      Serial.println("Auth Failed");
+    else if (error == OTA_BEGIN_ERROR)
+      Serial.println("Begin Failed");
+    else if (error == OTA_CONNECT_ERROR)
+      Serial.println("Connect Failed");
+    else if (error == OTA_RECEIVE_ERROR)
+      Serial.println("Receive Failed");
+    else if (error == OTA_END_ERROR)
+      Serial.println("End Failed");
+  });
+  ArduinoOTA.begin();
 
   server.begin();
 
@@ -94,7 +117,6 @@ void setup() {
   Serial.println(F("Master Card's UID"));
   for (uint8_t i = 0; i < 4; i++) {      // Read Master Card's UID from EEPROM
     masterCard[i] = EEPROM.read(2 + i);  // Write it to masterCard
-    Serial.print(masterCard[i], HEX);
   }
   EEPROM.commit();
 
@@ -111,6 +133,10 @@ void loop() {
   // lcd.print("Hello");
 
   do {
+    ArduinoOTA.handle();
+    digitalWrite(bell, LOW);
+    // mfrc522.PCD_DumpVersionToSerial();
+    // delay(500);
     if (masterMode) {
       blinkLed(1);
     } else {
@@ -159,8 +185,15 @@ void loop() {
         openTheDoor();
       } else {
         Serial.println(F("You shall not pass"));
-        digitalWrite(led, LOW);
-        delay(DELAY_2);
+        for (uint8_t i = 0; i < 5; ++i) {
+          digitalWrite(led, LOW);
+          digitalWrite(bell, LOW);
+          delay(100);
+          digitalWrite(led, HIGH);
+          digitalWrite(bell, HIGH);
+          delay(100);
+        }
+        digitalWrite(bell, LOW);
       }
     }
   }
@@ -332,12 +365,15 @@ void closeTheDoor() {
 }
 
 void openTheDoor() {
-  blinkLed(3);
+  blinkLed(1);
 
-  digitalWrite(led, LOW);
   digitalWrite(bell, HIGH);
-
+  digitalWrite(led, LOW);
   digitalWrite(door, DOOR_OPEN);
+
+  delay(100);
+  digitalWrite(bell, LOW);
+
   Serial.print("door opened by ID ");
   for (uint8_t i = 0; i < 4; ++i) {
     Serial.print(readCard[i], HEX);
@@ -374,8 +410,7 @@ void blinkLed(int times) {
 
 void ledBlinkHeartbeat() {
   int now = millis();
-  if (((now / 1000) % 5) == 0) {
-    blinkLed(3);
-    delay(DELAY_1);
+  if (((now / 100) % 50) == 0) {
+    blinkLed(1);
   }
 }
