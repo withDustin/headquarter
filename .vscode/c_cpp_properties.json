@@ -31,6 +31,7 @@
             ],
             "forcedInclude": [
                 "/Applications/Arduino.app/Contents/Java/hardware/arduino/avr/cores/arduino/Arduino.h",
+                "/Users/duongdev/Library/Arduino15/packages/esp8266/hardware/esp8266/2.6.3/variants/inventone/pins_arduino.h",
                 "${workspaceFolder}/config.ino"
             ],
             "intelliSenseMode": "gcc-x64",

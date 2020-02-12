@@ -1,10 +1,13 @@
 #include <EEPROM.h>
 #include <ESP8266WiFi.h>
+#include <LiquidCrystal.h>
 #include <MFRC522.h>
 #include <SPI.h>
+#include <pins_arduino.h>
 
 WiFiServer server(WEB_SERVER_PORT);
 MFRC522 mfrc522(SS_PIN, RST_PIN);
+LiquidCrystal lcd(D8, D9, D4, D5, D6, D7);
 
 bool masterMode = false;
 uint8_t successRead;
@@ -21,8 +24,13 @@ void setup() {
   EEPROM.begin(512);
   Serial.begin(SERIAL_PORT);
 
+  lcd.begin(16, 2);
+
+  lcd.print("ready");
+
   SPI.begin();
   mfrc522.PCD_Init();
+  mfrc522.PCD_DumpVersionToSerial();
 
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASS);

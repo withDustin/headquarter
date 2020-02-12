@@ -9,14 +9,14 @@
 #define WEB_SERVER_PORT 80
 
 // * Door
-#define door 2 // relay pin
+#define door D2 // relay pin
 #define DOOR_OPEN LOW
 #define DOOR_CLOSE HIGH
 #define DOOR_OPEN_TIMEOUT DELAY_2
 
 // * RFID
-#define SS_PIN 4
-#define RST_PIN 3
+#define SS_PIN D4
+#define RST_PIN D3
 
 // * Delay
 #define DELAY_500 500
