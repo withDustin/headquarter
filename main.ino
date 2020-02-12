@@ -1,108 +1,128 @@
-#include <Arduino.h>
 #include <EEPROM.h>
-#include <LiquidCrystal.h>
+#include <ESP8266WiFi.h>
 #include <MFRC522.h>
 #include <SPI.h>
 
-#define LED_ON LOW
-#define LED_OFF HIGH
-#define OPEN_TIMEOUT 3000
-
-#define led 13
-#define relay 38
-
-#define RST_PIN 49
-#define SS_PIN 53
+WiFiServer server(WEB_SERVER_PORT);
 MFRC522 mfrc522(SS_PIN, RST_PIN);
 
-LiquidCrystal lcd(8, 9, 4, 5, 6, 7);  // (rs, enable, d4, d5, d6, d7)
-
-bool programMode = false;  // initialize programming mode to false
-
+bool masterMode = false;
 uint8_t successRead;
-
+byte storedCard[4];
 byte readCard[4];
-byte storedCard[4];  // Stores an ID read from EEPROM
-byte masterCard[4] = {171, 201, 130, 34};
+byte masterCard[4];
 
 void setup() {
-  // Arduino Pin configuration
-  pinMode(relay, OUTPUT);
+  // Arduino pin config
+  pinMode(door, OUTPUT);
 
-  digitalWrite(relay, HIGH);
+  closeTheDoor();
 
-  Serial.begin(9600);
-  // while (!Serial)
-  //   ;
+  EEPROM.begin(512);
+  Serial.begin(SERIAL_PORT);
 
   SPI.begin();
   mfrc522.PCD_Init();
-  lcd.begin(16, 2);
 
-  lcdPrintDefaultMessage();
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
 
-  Serial.println("Ready!");
+  delay(DELAY_500);
+
+  Serial.print("Connecting");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(DELAY_1);
+    Serial.print(".");
+  }
+  Serial.println();
+
+  Serial.print("Connected, IP address: ");
+  Serial.println(WiFi.localIP());
+  server.begin();
+
+  if (EEPROM.read(1) != 144) {
+    Serial.println(F("No Master Card Defined"));
+    Serial.println(F("Scan A PICC to Define as Master Card"));
+    do {
+      successRead = getID();
+      // https://forum.arduino.cc/index.php?topic=442570.msg3046667#msg3046667
+      yield();
+    } while (!successRead);
+
+    for (uint8_t j = 0; j < 4; j++) {
+      EEPROM.write(2 + j, readCard[j]);
+      Serial.print(readCard[j], HEX);
+    }
+    Serial.println("");
+    EEPROM.write(1, 144);
+    Serial.println(F("Master Card Defined"));
+  }
+
+  Serial.println(F("-------------------"));
+  Serial.println(F("Master Card's UID"));
+  for (uint8_t i = 0; i < 4; i++) {      // Read Master Card's UID from EEPROM
+    masterCard[i] = EEPROM.read(2 + i);  // Write it to masterCard
+    Serial.print(masterCard[i], HEX);
+  }
+  EEPROM.commit();
+
+  Serial.println("");
+  Serial.println(F("-------------------"));
+  Serial.println(F("Everything is ready"));
+  Serial.println(F("Waiting PICCs to be scanned"));
 }
 
 void loop() {
-  lcdPrintDefaultMessage();
   do {
-    successRead = getID();  // sets successRead to 1 when we get read from
-                            // reader otherwise 0
-  } while (!successRead);   // Program will not go further while you not get a
-                            // successful read
+    successRead = getID();
+    yield();
+  } while (!successRead);
 
-  if (programMode) {
+  if (masterMode) {
     if (isMaster(readCard)) {
-      programMode = false;
-      lcd.clear();
-      lcd.print("Goodbye Master!");
-      delay(1000);
+      Serial.println(F("Master Card Scanned"));
+      Serial.println(F("Exiting Master Mode"));
+      Serial.println(F("-----------------------------"));
+      masterMode = false;
+      return;
     } else {
       if (findID(readCard)) {
-        // if card exists, delete it
+        Serial.println(F("I know this PICC, removing..."));
         deleteID(readCard);
-      } else {
+        Serial.println("-----------------------------");
+        Serial.println(F("Scan a PICC to ADD or REMOVE"));
+      } else {  // If scanned card is not known add it
+        Serial.println(F("I do not know this PICC, adding..."));
         addID(readCard);
+        Serial.println(F("-----------------------------"));
+        Serial.println(F("Scan a PICC to ADD or REMOVE"));
       }
     }
   } else {
     if (isMaster(readCard)) {
-      programMode = true;
-      lcd.clear();
-      lcd.print("Entering Master mode");
-      delay(1000);
+      masterMode = true;
+      Serial.println(F("Hello Master - Entered Master Mode"));
+      uint8_t count = EEPROM.read(0);
+      Serial.print(F("I have "));
+      Serial.print(count);
+      Serial.print(F(" record(s) on EEPROM"));
+      Serial.println("");
+      Serial.println(F("Scan a PICC to ADD or REMOVE to EEPROM"));
+      Serial.println(F("Scan Master Card again to Exit Master Mode"));
+      Serial.println(F("-----------------------------"));
     } else {
-      if (findID(readCard)) {  // If not, see if the card is in the EEPROM
+      if (findID(readCard)) {
         Serial.println(F("Welcome, You shall pass"));
-        granted();  // Open the door lock for 300 ms
-      } else {      // If not, show that the ID was not valid
+        openTheDoor();
+      } else {
         Serial.println(F("You shall not pass"));
-        denied();
       }
     }
   }
+
+  EEPROM.commit();
 }
 
-//* Access Granted
-void granted() {
-  lcd.clear();
-  lcd.write("   Welcome to");
-  lcd.setCursor(0, 1);
-  lcd.write("     Targeek");
-
-  digitalWrite(relay, LOW);   // Unlock door!
-  delay(OPEN_TIMEOUT);        // Hold door lock open for given seconds
-  digitalWrite(relay, HIGH);  // Relock door
-}
-
-void denied() {
-  lcd.clear();
-  lcd.write("Who are you?");
-  delay(1000);
-}
-
-//* Get PICC's UID
 uint8_t getID() {
   // Getting ready for Reading PICCs
   if (!mfrc522.PICC_IsNewCardPresent()) {  // If a new PICC placed to RFID
@@ -113,49 +133,37 @@ uint8_t getID() {
                                          // continue
     return 0;
   }
-  // There are Mifare PICCs which have 4 byte or 7 byte UID care if you use 7
-  // byte PICC I think we should assume every PICC as they have 4 byte UID Until
-  // we support 7 byte PICCs
-  Serial.print(F("Scanned PICC's UID: "));
+  Serial.println(F("Scanned PICC's UID:"));
   for (uint8_t i = 0; i < 4; i++) {  //
     readCard[i] = mfrc522.uid.uidByte[i];
-    Serial.print(readCard[i]);
-    Serial.print(" ");
+    Serial.print(readCard[i], HEX);
   }
   Serial.println("");
   mfrc522.PICC_HaltA();  // Stop reading
   return 1;
 }
 
-//* Check bytes
-bool checkTwo(byte a[], byte b[]) {
+bool isMaster(byte test[]) {
+  bool master = compareIDs(test, masterCard);
+
+  for (uint8_t i = 0; i < 4; ++i) {
+    Serial.print(masterCard[i], HEX);
+  }
+
+  Serial.println("");
+
+  if (master) {
+    Serial.println("Master");
+  }
+  return master;
+}
+
+bool compareIDs(byte a[], byte b[]) {
   for (uint8_t k = 0; k < 4; k++) {  // Loop 4 times
     if (a[k] != b[k]) {  // IF a != b then false, because: one fails, all fail
       return false;
     }
   }
-  return true;
-}
-
-void lcdPrintDefaultMessage() {
-  lcd.clear();
-
-  if (programMode) {
-    lcd.print("  Master mode");
-    lcd.setCursor(0, 1);
-    lcd.print("waiting for card");
-    return;
-  }
-
-  lcd.print(" Scan to enter");
-  lcd.setCursor(0, 1);
-  lcd.print("v0.0.1 @ Targeek");
-}
-
-bool isMaster(byte test[]) {
-  bool master = checkTwo(test, masterCard);
-  if (!master) return false;
-  Serial.println("Master!!!");
   return true;
 }
 
@@ -165,20 +173,6 @@ void readID(uint8_t number) {
     storedCard[i] =
         EEPROM.read(start + i);  // Assign values read from EEPROM to array
   }
-}
-
-bool findID(byte find[]) {
-  uint8_t count = EEPROM.read(0);        // Read the first Byte of EEPROM that
-  for (uint8_t i = 1; i < count; i++) {  // Loop once for each EEPROM entry
-    readID(i);  // Read an ID from EEPROM, it is stored in storedCard[4]
-    if (checkTwo(
-            find,
-            storedCard)) {  // Check to see if the storedCard read from EEPROM
-      return true;
-    } else {  // If not, return false
-    }
-  }
-  return false;
 }
 
 void addID(byte a[]) {
@@ -194,18 +188,44 @@ void addID(byte a[]) {
           start + j,
           a[j]);  // Write the array values to EEPROM in the right position
     }
-    successWrite();
     Serial.println(F("Succesfully added ID record to EEPROM"));
   } else {
-    failedWrite();
+    // failedWrite();
     Serial.println(F("Failed! There is something wrong with ID or bad EEPROM"));
+  }
+}
+
+bool findID(byte find[]) {
+  uint8_t count = EEPROM.read(0);        // Read the first Byte of EEPROM that
+  for (uint8_t i = 1; i < count; i++) {  // Loop once for each EEPROM entry
+    readID(i);  // Read an ID from EEPROM, it is stored in storedCard[4]
+    if (compareIDs(
+            find,
+            storedCard)) {  // Check to see if the storedCard read from EEPROM
+      return true;
+    } else {  // If not, return false
+    }
+  }
+  return false;
+}
+
+uint8_t findIDSlot(byte find[]) {
+  uint8_t count = EEPROM.read(0);         // Read the first Byte of EEPROM that
+  for (uint8_t i = 1; i <= count; i++) {  // Loop once for each EEPROM entry
+    readID(i);  // Read an ID from EEPROM, it is stored in storedCard[4]
+    if (compareIDs(
+            find,
+            storedCard)) {  // Check to see if the storedCard read from EEPROM
+      // is the same as the find[] ID card passed
+      return i;  // The slot number of the card
+    }
   }
 }
 
 void deleteID(byte a[]) {
   if (!findID(a)) {  // Before we delete from the EEPROM, check to see if we
                      // have this card!
-    failedWrite();   // If not
+    // failedWrite();      // If not
     Serial.println(F("Failed! There is something wrong with ID or bad EEPROM"));
   } else {
     uint8_t num = EEPROM.read(0);  // Get the numer of used spaces, position 0
@@ -217,7 +237,7 @@ void deleteID(byte a[]) {
     uint8_t j;
     uint8_t count = EEPROM.read(
         0);  // Read the first Byte of EEPROM that stores number of cards
-    slot = findIDSLOT(a);  // Figure out the slot number of the card to delete
+    slot = findIDSlot(a);  // Figure out the slot number of the card to delete
     start = (slot * 4) + 2;
     looping = ((num - slot) * 4);
     num--;                           // Decrement the counter by one
@@ -232,38 +252,25 @@ void deleteID(byte a[]) {
     for (uint8_t k = 0; k < 4; k++) {  // Shifting loop
       EEPROM.write(start + j + k, 0);
     }
-    successDelete();
+    // successDelete();
     Serial.println(F("Succesfully removed ID record from EEPROM"));
   }
 }
 
-void successDelete() {
-  lcd.clear();
-  lcd.write("Card removed");
-  delay(1000);
+void closeTheDoor() {
+  digitalWrite(door, DOOR_CLOSE);
+  Serial.println("door closed");
 }
 
-void successWrite() {
-  lcd.clear();
-  lcd.write("Card added!");
-  delay(1000);
-}
-
-void failedWrite() {
-  lcd.clear();
-  lcd.write("Write failed");
-  delay(1000);
-}
-
-uint8_t findIDSLOT(byte find[]) {
-  uint8_t count = EEPROM.read(0);         // Read the first Byte of EEPROM that
-  for (uint8_t i = 1; i <= count; i++) {  // Loop once for each EEPROM entry
-    readID(i);  // Read an ID from EEPROM, it is stored in storedCard[4]
-    if (checkTwo(
-            find,
-            storedCard)) {  // Check to see if the storedCard read from EEPROM
-      // is the same as the find[] ID card passed
-      return i;  // The slot number of the card
-    }
+void openTheDoor() {
+  digitalWrite(door, DOOR_OPEN);
+  Serial.print("door opened by ID ");
+  for (uint8_t i = 0; i < 4; ++i) {
+    Serial.print(readCard[i]);
   }
+
+  Serial.println("");
+
+  delay(DOOR_OPEN_TIMEOUT);
+  closeTheDoor();
 }

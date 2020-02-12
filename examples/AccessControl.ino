@@ -94,7 +94,7 @@
 #define relay 4     // Set Relay Pin
 #define wipeB 3     // Button pin for WipeMode
 
-bool programMode = false;  // initialize programming mode to false
+bool masterMode = false;  // initialize programming mode to false
 
 uint8_t successRead;    // Variable integer to keep if we have Successful Read from Reader
 
@@ -222,7 +222,7 @@ void loop () {
       }
       Serial.println(F("Master Card Erase Cancelled"));
     }
-    if (programMode) {
+    if (masterMode) {
       cycleLeds();              // Program Mode cycles through Red Green Blue waiting to read a new card
     }
     else {
@@ -230,12 +230,12 @@ void loop () {
     }
   }
   while (!successRead);   //the program will not go further while you are not getting a successful read
-  if (programMode) {
+  if (masterMode) {
     if ( isMaster(readCard) ) { //When in program mode check First If master card scanned again to exit program mode
       Serial.println(F("Master Card Scanned"));
       Serial.println(F("Exiting Program Mode"));
       Serial.println(F("-----------------------------"));
-      programMode = false;
+      masterMode = false;
       return;
     }
     else {
@@ -255,7 +255,7 @@ void loop () {
   }
   else {
     if ( isMaster(readCard)) {    // If scanned card's ID matches Master Card's ID - enter program mode
-      programMode = true;
+      masterMode = true;
       Serial.println(F("Hello Master - Entered Program Mode"));
       uint8_t count = EEPROM.read(0);   // Read the first Byte of EEPROM that
       Serial.print(F("I have "));     // stores the number of ID's in EEPROM
