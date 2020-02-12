@@ -5,6 +5,9 @@
 #define WIFI_SSID "TargeekHQ"
 #define WIFI_PASS "geeksunified"
 
+#define led LED_BUILTIN
+#define bell D0
+
 // * Web server
 #define WEB_SERVER_PORT 80
 

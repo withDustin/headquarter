@@ -5,6 +5,8 @@
 #include <SPI.h>
 #include <pins_arduino.h>
 
+#define VERSION "v0.1"
+
 WiFiServer server(WEB_SERVER_PORT);
 MFRC522 mfrc522(SS_PIN, RST_PIN);
 LiquidCrystal lcd(D8, D9, D4, D5, D6, D7);
@@ -18,34 +20,56 @@ byte masterCard[4];
 void setup() {
   // Arduino pin config
   pinMode(door, OUTPUT);
+  pinMode(led, OUTPUT);
+  pinMode(bell, OUTPUT);
 
-  closeTheDoor();
+  digitalWrite(bell, HIGH);
+  digitalWrite(led, HIGH);
 
   EEPROM.begin(512);
   Serial.begin(SERIAL_PORT);
+  SPI.begin();
 
   lcd.begin(16, 2);
-
-  lcd.print("ready");
-
   SPI.begin();
   mfrc522.PCD_Init();
   mfrc522.PCD_DumpVersionToSerial();
+
+  closeTheDoor();
+
+  lcd.print("Starting...");
+  lcd.setCursor(0, 1);
+  lcd.print(VERSION);
+
+  delay(DELAY_500);
+
+  lcd.clear();
+  lcd.print("Connecting WiFi");
+  lcd.setCursor(0, 1);
+  lcd.print(WIFI_SSID);
 
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
 
   delay(DELAY_500);
 
-  Serial.print("Connecting");
+  Serial.print("Connecting WiFi");
   while (WiFi.status() != WL_CONNECTED) {
     delay(DELAY_1);
     Serial.print(".");
   }
+
+  lcd.clear();
+  lcd.print(WIFI_SSID);
+  lcd.setCursor(0, 1);
+  lcd.print(WiFi.localIP());
+
   Serial.println();
 
   Serial.print("Connected, IP address: ");
   Serial.println(WiFi.localIP());
+  delay(DELAY_1);
+
   server.begin();
 
   if (EEPROM.read(1) != 144) {
@@ -78,10 +102,21 @@ void setup() {
   Serial.println(F("-------------------"));
   Serial.println(F("Everything is ready"));
   Serial.println(F("Waiting PICCs to be scanned"));
+
+  blinkLed(2);
 }
 
 void loop() {
+  lcdPrint();
+  // lcd.print("Hello");
+
   do {
+    if (masterMode) {
+      blinkLed(1);
+    } else {
+      digitalWrite(led, HIGH);
+      ledBlinkHeartbeat();
+    }
     successRead = getID();
     yield();
   } while (!successRead);
@@ -96,7 +131,7 @@ void loop() {
     } else {
       if (findID(readCard)) {
         Serial.println(F("I know this PICC, removing..."));
-        deleteID(readCard);
+        removeID(readCard);
         Serial.println("-----------------------------");
         Serial.println(F("Scan a PICC to ADD or REMOVE"));
       } else {  // If scanned card is not known add it
@@ -124,11 +159,26 @@ void loop() {
         openTheDoor();
       } else {
         Serial.println(F("You shall not pass"));
+        digitalWrite(led, LOW);
+        delay(DELAY_2);
       }
     }
   }
 
   EEPROM.commit();
+}
+
+void lcdPrint() {
+  lcd.clear();
+  if (masterMode) {
+    lcd.print("Master Mode");
+    lcd.setCursor(0, 1);
+    lcd.print("Please scan card");
+  } else {
+    lcd.print("Have a nice day");
+    lcd.setCursor(0, 1);
+    lcd.print("    TARGEEK");
+  }
 }
 
 uint8_t getID() {
@@ -153,12 +203,6 @@ uint8_t getID() {
 
 bool isMaster(byte test[]) {
   bool master = compareIDs(test, masterCard);
-
-  for (uint8_t i = 0; i < 4; ++i) {
-    Serial.print(masterCard[i], HEX);
-  }
-
-  Serial.println("");
 
   if (master) {
     Serial.println("Master");
@@ -197,10 +241,22 @@ void addID(byte a[]) {
           a[j]);  // Write the array values to EEPROM in the right position
     }
     Serial.println(F("Succesfully added ID record to EEPROM"));
+
+    lcd.clear();
+    lcd.print("Card added");
+    lcd.setCursor(0, 1);
+    lcd.print(cardToStr(a));
+
   } else {
     // failedWrite();
     Serial.println(F("Failed! There is something wrong with ID or bad EEPROM"));
+    lcd.clear();
+    lcd.print("Cannot add card");
+    lcd.setCursor(0, 1);
+    lcd.print(cardToStr(a));
   }
+
+  delay(DELAY_1);
 }
 
 bool findID(byte find[]) {
@@ -230,7 +286,7 @@ uint8_t findIDSlot(byte find[]) {
   }
 }
 
-void deleteID(byte a[]) {
+void removeID(byte a[]) {
   if (!findID(a)) {  // Before we delete from the EEPROM, check to see if we
                      // have this card!
     // failedWrite();      // If not
@@ -262,7 +318,12 @@ void deleteID(byte a[]) {
     }
     // successDelete();
     Serial.println(F("Succesfully removed ID record from EEPROM"));
+    lcd.clear();
+    lcd.print("Card removed");
+    lcd.setCursor(0, 1);
+    lcd.print(cardToStr(a));
   }
+  delay(DELAY_1);
 }
 
 void closeTheDoor() {
@@ -271,14 +332,50 @@ void closeTheDoor() {
 }
 
 void openTheDoor() {
+  blinkLed(3);
+
+  digitalWrite(led, LOW);
+  digitalWrite(bell, HIGH);
+
   digitalWrite(door, DOOR_OPEN);
   Serial.print("door opened by ID ");
   for (uint8_t i = 0; i < 4; ++i) {
-    Serial.print(readCard[i]);
+    Serial.print(readCard[i], HEX);
   }
 
   Serial.println("");
 
+  lcd.clear();
+  lcd.print("Welcome to Targeek");
+  lcd.setCursor(0, 1);
+  lcd.print("ID: ");
+  lcd.print(cardToStr(readCard));
+
   delay(DOOR_OPEN_TIMEOUT);
   closeTheDoor();
+}
+
+char* cardToStr(byte card[]) {
+  char* str = "";
+  for (uint8_t i = 0; i < 4; ++i) {
+    str[i] = (char)card[i];
+  }
+  return str;
+}
+
+void blinkLed(int times) {
+  for (uint8_t i = 0; i < times; ++i) {
+    digitalWrite(led, LOW);
+    delay(100);
+    digitalWrite(led, HIGH);
+    delay(100);
+  }
+}
+
+void ledBlinkHeartbeat() {
+  int now = millis();
+  if (((now / 1000) % 5) == 0) {
+    blinkLed(3);
+    delay(DELAY_1);
+  }
 }
