@@ -1,18 +1,13 @@
-#include <ArduinoOTA.h>
 #include <EEPROM.h>
-#include <ESP8266WiFi.h>
-#include <ESP8266mDNS.h>
-#include <LiquidCrystal.h>
+// #include <ESP8266WiFi.h>
 #include <MFRC522.h>
 #include <SPI.h>
-#include <WiFiUdp.h>
 #include <pins_arduino.h>
 
 #define VERSION "v0.1"
 
-WiFiServer server(WEB_SERVER_PORT);
+// WiFiServer server(WEB_SERVER_PORT);
 MFRC522 mfrc522(SS_PIN, RST_PIN);
-LiquidCrystal lcd(D8, D9, D4, D5, D6, D7);
 
 bool masterMode = false;
 uint8_t successRead;
@@ -24,7 +19,6 @@ void setup() {
   // Arduino pin config
   pinMode(door, OUTPUT);
   pinMode(led, OUTPUT);
-  // pinMode(bell, OUTPUT);
 
   digitalWrite(led, LOW);
   digitalWrite(bell, LOW);
@@ -33,67 +27,31 @@ void setup() {
   Serial.begin(SERIAL_PORT);
   SPI.begin();
 
-  lcd.begin(16, 2);
   SPI.begin();
   mfrc522.PCD_Init();
   mfrc522.PCD_DumpVersionToSerial();
 
   closeTheDoor();
 
-  lcd.print("Starting...");
+  blinkLed(2);
+
   Serial.println(led);
   Serial.println(bell);
-  lcd.setCursor(0, 1);
-  lcd.print(VERSION);
 
-  lcd.clear();
-  lcd.print("Connecting WiFi");
-  lcd.setCursor(0, 1);
-  lcd.print(WIFI_SSID);
+  // WiFi.mode(WIFI_STA);
+  // WiFi.begin(WIFI_SSID, WIFI_PASS);
 
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
-
-  Serial.print("Connecting WiFi");
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(DELAY_500);
-    Serial.print(".");
-  }
-
-  lcd.clear();
-  lcd.print(WIFI_SSID);
-  lcd.setCursor(0, 1);
-  lcd.print(WiFi.localIP());
+  // Serial.print("Connecting WiFi");
+  // while (WiFi.status() != WL_CONNECTED) {
+  //   delay(DELAY_500);
+  //   blinkLed(1);
+  //   Serial.print(".");
+  // }
 
   Serial.println();
 
-  Serial.print("Connected, IP address: ");
-  Serial.println(WiFi.localIP());
-
-  ArduinoOTA.onStart([]() { Serial.println("Start"); });
-  ArduinoOTA.onEnd([]() { Serial.println("\nEnd"); });
-  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-    Serial.print("Progress");
-    Serial.print(progress / (total / 100));
-  });
-  ArduinoOTA.onError([](ota_error_t error) {
-    Serial.print("Error: ");
-    Serial.println(error);
-
-    if (error == OTA_AUTH_ERROR)
-      Serial.println("Auth Failed");
-    else if (error == OTA_BEGIN_ERROR)
-      Serial.println("Begin Failed");
-    else if (error == OTA_CONNECT_ERROR)
-      Serial.println("Connect Failed");
-    else if (error == OTA_RECEIVE_ERROR)
-      Serial.println("Receive Failed");
-    else if (error == OTA_END_ERROR)
-      Serial.println("End Failed");
-  });
-  ArduinoOTA.begin();
-
-  server.begin();
+  // Serial.print("Connected, IP address: ");
+  // Serial.println(WiFi.localIP());
 
   if (EEPROM.read(1) != 144) {
     Serial.println(F("No Master Card Defined"));
@@ -125,15 +83,11 @@ void setup() {
   Serial.println(F("Everything is ready"));
   Serial.println(F("Waiting PICCs to be scanned"));
 
-  blinkLed(2);
+  blinkLed(5);
 }
 
 void loop() {
-  lcdPrint();
-  // lcd.print("Hello");
-
   do {
-    ArduinoOTA.handle();
     digitalWrite(bell, LOW);
     // mfrc522.PCD_DumpVersionToSerial();
     // delay(500);
@@ -201,19 +155,6 @@ void loop() {
   EEPROM.commit();
 }
 
-void lcdPrint() {
-  lcd.clear();
-  if (masterMode) {
-    lcd.print("Master Mode");
-    lcd.setCursor(0, 1);
-    lcd.print("Please scan card");
-  } else {
-    lcd.print("Have a nice day");
-    lcd.setCursor(0, 1);
-    lcd.print("    TARGEEK");
-  }
-}
-
 uint8_t getID() {
   // Getting ready for Reading PICCs
   if (!mfrc522.PICC_IsNewCardPresent()) {  // If a new PICC placed to RFID
@@ -275,18 +216,9 @@ void addID(byte a[]) {
     }
     Serial.println(F("Succesfully added ID record to EEPROM"));
 
-    lcd.clear();
-    lcd.print("Card added");
-    lcd.setCursor(0, 1);
-    lcd.print(cardToStr(a));
-
   } else {
     // failedWrite();
     Serial.println(F("Failed! There is something wrong with ID or bad EEPROM"));
-    lcd.clear();
-    lcd.print("Cannot add card");
-    lcd.setCursor(0, 1);
-    lcd.print(cardToStr(a));
   }
 
   delay(DELAY_1);
@@ -351,10 +283,6 @@ void removeID(byte a[]) {
     }
     // successDelete();
     Serial.println(F("Succesfully removed ID record from EEPROM"));
-    lcd.clear();
-    lcd.print("Card removed");
-    lcd.setCursor(0, 1);
-    lcd.print(cardToStr(a));
   }
   delay(DELAY_1);
 }
@@ -380,12 +308,6 @@ void openTheDoor() {
   }
 
   Serial.println("");
-
-  lcd.clear();
-  lcd.print("Welcome to Targeek");
-  lcd.setCursor(0, 1);
-  lcd.print("ID: ");
-  lcd.print(cardToStr(readCard));
 
   delay(DOOR_OPEN_TIMEOUT);
   closeTheDoor();

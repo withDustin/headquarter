@@ -15,7 +15,7 @@
 #define door D2 // relay pin
 #define DOOR_OPEN LOW
 #define DOOR_CLOSE HIGH
-#define DOOR_OPEN_TIMEOUT DELAY_4
+#define DOOR_OPEN_TIMEOUT DELAY_2
 
 // * RFID
 #define SS_PIN D4
