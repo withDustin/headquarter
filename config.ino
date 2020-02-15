@@ -1,5 +1,5 @@
 // * Debug
-#define SERIAL_PORT 9600
+#define SERIAL_PORT 115200
 
 // * WiFi
 #define WIFI_SSID "TargeekHQ"
@@ -15,7 +15,7 @@
 #define door D2 // relay pin
 #define DOOR_OPEN LOW
 #define DOOR_CLOSE HIGH
-#define DOOR_OPEN_TIMEOUT DELAY_2
+#define DOOR_OPEN_TIMEOUT DELAY_5
 
 // * RFID
 #define SS_PIN D4

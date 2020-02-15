@@ -23,10 +23,16 @@ unsigned long previousTime = 0;
 // Define timeout time in milliseconds (example: 2000ms = 2s)
 const long timeoutTime = 2000;
 
+void (* resetFunc) (void) = 0;
+
 void setup() {
+  digitalWrite(RST_PIN, HIGH);
+  digitalWrite(door, HIGH);
+
   // Arduino pin config
   pinMode(door, OUTPUT);
   pinMode(led, OUTPUT);
+  pinMode(RST_PIN, OUTPUT);
 
   digitalWrite(led, LOW);
   digitalWrite(bell, LOW);
@@ -43,18 +49,15 @@ void setup() {
 
   blinkLed(2);
 
-  Serial.println(led);
-  Serial.println(bell);
-
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
 
   Serial.print("Connecting WiFi");
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(DELAY_500);
-    blinkLed(1);
-    Serial.print(".");
-  }
+  // while (WiFi.status() != WL_CONNECTED) {
+  //   delay(DELAY_500);
+  //   blinkLed(1);
+  //   Serial.print(".");
+  // }
 
   Serial.println();
 
@@ -92,7 +95,7 @@ void setup() {
   Serial.println(F("Everything is ready"));
   Serial.println(F("Waiting PICCs to be scanned"));
 
-  blinkLed(5);
+  blinkLed(2);
 }
 
 void loop() {
@@ -194,15 +197,23 @@ void handleWebClient() {
             client.println("Connection: close");
             client.println();
 
-            // turns the GPIOs on and off
-            if (header.indexOf("GET /open") >= 0) {
-              Serial.println("open request");
-              openTheDoor();
-            }
-
             // Display the HTML web page
             client.println("<!DOCTYPE html><html>");
             client.println("OK");
+
+            client.stop();
+
+            if (header.indexOf("GET /open") >= 0 ||
+                header.indexOf("POST /open") >= 0) {
+              Serial.println("open request");
+              openTheDoor();
+            }
+            if (header.indexOf("GET /reset") >= 0 ||
+                header.indexOf("POST /reset") >= 0) {
+              Serial.println("reset request");
+              resetFunc();
+            }
+
             break;
           } else {  // if you got a newline, then clear currentLine
             currentLine = "";
@@ -213,12 +224,6 @@ void handleWebClient() {
         }
       }
     }
-    // Clear the header variable
-    header = "";
-    // Close the connection
-    client.stop();
-    Serial.println("Client disconnected.");
-    Serial.println("");
   }
 }
 
@@ -226,10 +231,13 @@ uint8_t getID() {
   // Getting ready for Reading PICCs
   if (!mfrc522.PICC_IsNewCardPresent()) {  // If a new PICC placed to RFID
                                            // reader continue
+    // Serial.println("PICC_IsNewCardPresent");
+
     return 0;
   }
   if (!mfrc522.PICC_ReadCardSerial()) {  // Since a PICC placed get Serial and
-                                         // continue
+    // continue
+    Serial.println("PICC_ReadCardSerial");
     return 0;
   }
   Serial.println(F("Scanned PICC's UID:"));
@@ -376,6 +384,8 @@ void openTheDoor() {
 
   Serial.println("");
 
+  resetFunc();
+
   delay(DOOR_OPEN_TIMEOUT);
   closeTheDoor();
 }
@@ -399,7 +409,10 @@ void blinkLed(int times) {
 
 void ledBlinkHeartbeat() {
   int now = millis();
-  if (((now / 100) % 50) == 0) {
+  if (((now / 100) % 600) == 0) { // 60 second
+    resetFunc();
+  }
+  if (((now / 100) % 50) == 0) { // 5 second
     blinkLed(1);
   }
 }
