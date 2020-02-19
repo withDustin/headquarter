@@ -15,6 +15,7 @@ byte storedCard[4];
 byte readCard[4];
 byte masterCard[4];
 String header;
+byte action = 0;
 
 // Current time
 unsigned long currentTime = millis();
@@ -23,7 +24,7 @@ unsigned long previousTime = 0;
 // Define timeout time in milliseconds (example: 2000ms = 2s)
 const long timeoutTime = 2000;
 
-void (* resetFunc) (void) = 0;
+void (*resetBoard)(void) = 0;
 
 void setup() {
   digitalWrite(RST_PIN, HIGH);
@@ -47,7 +48,7 @@ void setup() {
 
   closeTheDoor();
 
-  blinkLed(2);
+  // blinkLed(2);
 
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
@@ -169,6 +170,8 @@ void loop() {
 }
 
 void handleWebClient() {
+  const byte OPEN_THE_DOOR = 1, RESET = 2;
+
   WiFiClient client = server.available();
 
   if (client) {                     // If a new client connects,
@@ -197,23 +200,21 @@ void handleWebClient() {
             client.println("Connection: close");
             client.println();
 
-            // Display the HTML web page
-            client.println("<!DOCTYPE html><html>");
-            client.println("OK");
-
-            client.stop();
-
             if (header.indexOf("GET /open") >= 0 ||
                 header.indexOf("POST /open") >= 0) {
-              Serial.println("open request");
-              openTheDoor();
+              client.println("Open");
+              action = OPEN_THE_DOOR;
+            } else if (header.indexOf("GET /reset") >= 0) {
+              client.println("reset");
+              action = RESET;
+            } else {
+              action = 0;
             }
-            if (header.indexOf("GET /reset") >= 0 ||
-                header.indexOf("POST /reset") >= 0) {
-              Serial.println("reset request");
-              resetFunc();
-            }
+            client.println("OK!");
 
+            // The HTTP response ends with another blank line
+            client.println();
+            // Break out of the while loop
             break;
           } else {  // if you got a newline, then clear currentLine
             currentLine = "";
@@ -223,6 +224,27 @@ void handleWebClient() {
           currentLine += c;      // add it to the end of the currentLine
         }
       }
+    }
+    // Clear the header variable
+    header = "";
+    // Close the connection
+    client.stop();
+    Serial.println("Client disconnected.");
+    Serial.println("");
+
+    // ensures the web client's stopped.
+    delay(10);
+
+    Serial.print("action: ");
+    Serial.println(action);
+
+    switch (action) {
+      case OPEN_THE_DOOR:
+        openTheDoor();
+        break;
+      case RESET:
+        resetBoard();
+        break;
     }
   }
 }
@@ -368,13 +390,13 @@ void closeTheDoor() {
 }
 
 void openTheDoor() {
-  blinkLed(1);
+  // blinkLed(1);
 
   digitalWrite(bell, HIGH);
   digitalWrite(led, LOW);
   digitalWrite(door, DOOR_OPEN);
 
-  delay(100);
+  // delay(100);
   digitalWrite(bell, LOW);
 
   Serial.print("door opened by ID ");
@@ -384,10 +406,10 @@ void openTheDoor() {
 
   Serial.println("");
 
-  resetFunc();
+  resetBoard();
 
-  delay(DOOR_OPEN_TIMEOUT);
-  closeTheDoor();
+  // delay(DOOR_OPEN_TIMEOUT);
+  // closeTheDoor();
 }
 
 char* cardToStr(byte card[]) {
@@ -409,10 +431,11 @@ void blinkLed(int times) {
 
 void ledBlinkHeartbeat() {
   int now = millis();
-  if (((now / 100) % 600) == 0) { // 60 second
-    resetFunc();
+  if (((now / 100) % 600) == 0) {  // 60 second
+    digitalWrite(led, LOW);
+    resetBoard();
   }
-  if (((now / 100) % 50) == 0) { // 5 second
+  if (((now / 100) % 50) == 0) {  // 5 second
     blinkLed(1);
   }
 }
