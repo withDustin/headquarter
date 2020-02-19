@@ -1,10 +1,48 @@
+#include <ArduinoOTA.h>
 #include <EEPROM.h>
 #include <ESP8266WiFi.h>
+#include <ESP8266mDNS.h>
 #include <MFRC522.h>
 #include <SPI.h>
+#include <WiFiUdp.h>
 #include <pins_arduino.h>
 
 #define VERSION "v0.1"
+// * Debug
+#define SERIAL_PORT 115200
+
+// * WiFi
+#define WIFI_SSID "TargeekHQ"
+#define WIFI_PASS "geeksunified"
+
+#define led LED_BUILTIN
+#define bell D8
+
+// * Web server
+#define WEB_SERVER_PORT 80
+
+// * Door
+#define door D2  // relay pin
+#define DOOR_OPEN LOW
+#define DOOR_CLOSE HIGH
+#define DOOR_OPEN_TIMEOUT DELAY_5
+
+// * RFID
+#define SS_PIN D4
+#define RST_PIN D3
+
+// * Delay
+#define DELAY_500 500
+#define DELAY_1 1000
+#define DELAY_2 2000
+#define DELAY_3 3000
+#define DELAY_4 4000
+#define DELAY_5 5000
+#define DELAY_6 6000
+#define DELAY_7 7000
+#define DELAY_8 8000
+#define DELAY_9 9000
+#define DELAY_10 10000
 
 WiFiServer server(WEB_SERVER_PORT);
 MFRC522 mfrc522(SS_PIN, RST_PIN);
@@ -16,6 +54,7 @@ byte readCard[4];
 byte masterCard[4];
 String header;
 byte action = 0;
+bool updating = false;
 
 // Current time
 unsigned long currentTime = millis();
@@ -66,6 +105,42 @@ void setup() {
   Serial.println(WiFi.localIP());
   server.begin();
 
+  ArduinoOTA.onStart([]() {
+    updating = true;
+    String type;
+    if (ArduinoOTA.getCommand() == U_FLASH) {
+      type = "sketch";
+    } else {  // U_FS
+      type = "filesystem";
+    }
+
+    // NOTE: if updating FS this would be the place to unmount FS using FS.end()
+    Serial.println("Start updating " + type);
+  });
+  ArduinoOTA.onEnd([]() {
+    updating = false;
+    Serial.println("\nEnd");
+  });
+  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    blinkLed(1);
+    Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+  });
+  ArduinoOTA.onError([](ota_error_t error) {
+    Serial.printf("Error[%u]: ", error);
+    if (error == OTA_AUTH_ERROR) {
+      Serial.println("Auth Failed");
+    } else if (error == OTA_BEGIN_ERROR) {
+      Serial.println("Begin Failed");
+    } else if (error == OTA_CONNECT_ERROR) {
+      Serial.println("Connect Failed");
+    } else if (error == OTA_RECEIVE_ERROR) {
+      Serial.println("Receive Failed");
+    } else if (error == OTA_END_ERROR) {
+      Serial.println("End Failed");
+    }
+  });
+  ArduinoOTA.begin();
+
   if (EEPROM.read(1) != 144) {
     Serial.println(F("No Master Card Defined"));
     Serial.println(F("Scan A PICC to Define as Master Card"));
@@ -101,6 +176,7 @@ void setup() {
 
 void loop() {
   do {
+    ArduinoOTA.handle();
     handleWebClient();
     digitalWrite(bell, LOW);
     // mfrc522.PCD_DumpVersionToSerial();
@@ -202,15 +278,15 @@ void handleWebClient() {
 
             if (header.indexOf("GET /open") >= 0 ||
                 header.indexOf("POST /open") >= 0) {
-              client.println("Open");
+              client.println("Open the door");
               action = OPEN_THE_DOOR;
             } else if (header.indexOf("GET /reset") >= 0) {
-              client.println("reset");
+              client.println("Restart the board");
               action = RESET;
             } else {
               action = 0;
             }
-            client.println("OK!");
+            client.println("Done!");
 
             // The HTTP response ends with another blank line
             client.println();
@@ -233,7 +309,7 @@ void handleWebClient() {
     Serial.println("");
 
     // ensures the web client's stopped.
-    delay(10);
+    delay(100);
 
     Serial.print("action: ");
     Serial.println(action);
@@ -431,7 +507,7 @@ void blinkLed(int times) {
 
 void ledBlinkHeartbeat() {
   int now = millis();
-  if (((now / 100) % 600) == 0) {  // 60 second
+  if (((now / 100) % 600) == 0 && !updating) {  // 60 second
     digitalWrite(led, LOW);
     resetBoard();
   }

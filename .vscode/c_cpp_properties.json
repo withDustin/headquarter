@@ -18,7 +18,6 @@
                 "/Applications/Arduino.app/Contents/Java/libraries/**",
                 "/Applications/Arduino.app/Contents/Java/tools/**",
                 "/Applications/Arduino.app/Contents/Java/hardware/arduino/avr/**",
-                "${workspaceRoot}/arduino/**",
                 "${env:arduino_avr_include_path}/**",
                 "${env:arduino_avr_include2_path}/**",
                 "${env:arduino_avr}/**",
@@ -27,7 +26,8 @@
                 "/Applications/Arduino.app/Contents/Java/libraries/LiquidCrystal/**",
                 "/Users/duongdev/Library/Arduino15/packages/esp8266/hardware/esp8266/2.6.3/libraries/**/**",
                 "/Users/duongdev/Library/Arduino15/packages/esp8266/hardware/esp8266/2.6.3/**",
-                "/Users/duongdev/Library/Arduino15/packages/esp8266/tools/**"
+                "/Users/duongdev/Library/Arduino15/packages/esp8266/tools/**",
+                "/Users/duongdev/Library/Arduino15/packages/esp8266/hardware/esp8266/2.6.3/libraries/**"
             ],
             "forcedInclude": [
                 "/Applications/Arduino.app/Contents/Java/hardware/arduino/avr/cores/arduino/Arduino.h",
